@@ -1,0 +1,61 @@
+node{
+    
+    def buildNumber = BUILD_NUMBER
+    stage("Git Clone"){
+        git url: 'https://github.com/venkataRamanth/maven-web-application.git',branch: 'master'
+        
+    }
+    
+    //Build the package
+    stage("mvn clean package"){
+        def mavenHome= tool name: "Maven",type: "maven"
+        sh "${mavenHome}/bin/mvn clean package"
+        
+    }
+    
+    //building docker Image
+    stage("Build Docker Image"){
+        sh "docker build -t venkataramanth/maven-web-application:${buildNumber} ."
+        
+    }
+    
+    //Login to docker hub and push the imaage
+    stage("Docker Login And Push"){
+        withCredentials([string(credentialsId: 'DockerHubPwd', variable: 'DockerHubPwd')]) {
+        sh "docker login -u venkataramanth -p ${DockerHubPwd}"
+            
+        }
+        sh "docker push venkataramanth/maven-web-application:${buildNumber}"
+        
+    }
+    
+      // remove old build images in server
+    stage("Remove Local Image"){
+        sh "docker rmi -f venkataramanth/maven-web-application:${buildNumber}"
+        
+    }
+    
+   
+   //updating latest version in docker-compose file 
+  
+    stage("Updating Latest Version"){
+       sh "sed -i 's/VERSION/${buildNumber}/g' docker-compose.yml"
+    }
+    
+    
+    //copy and run the docker-compose file
+    stage("Docker compose SCP And Run"){
+      sshagent(['Docker_Jenkins_SSH']) {
+        sh 'scp -o StrictHostkeyChecking=no docker-compose.yml ubuntu@ip-172-31-1-153:/home/ubuntu '
+        sh "ssh ubuntu@ip-172-31-1-153 docker-compose up -d"
+    
+          
+      }
+      
+   
+      
+        
+    }
+    
+    
+}

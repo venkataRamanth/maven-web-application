@@ -1,0 +1,83 @@
+node{
+    
+    //echo "SCM Branch Name is: ${env.BRANCH_NAME}"
+    //echo "Node Name is: ${env.NODE_NAME}" 
+    
+    def mavenHome = tool name: "maven-3.9.2"
+    properties([buildDiscarder(logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '5', daysToKeepStr: '', numToKeepStr: '5'))])
+    
+    try{
+       
+       slackNotification('STARTED') 
+    
+    stage('git check out'){
+        git credentialsId: 'venkataRamanth', url: 'https://github.com/venkataRamanth/maven-web-application.git'
+    }
+    stage('Maven build'){
+    sh "${mavenHome}/bin/mvn clean package" 
+    }
+    /*
+    stage('SonarQubeReport'){
+        sh "${mavenHome}/bin/mvn clean sonar:sonar"
+        
+    }
+    
+    stage('NexusArtifactoryt'){
+        sh "${mavenHome}/bin/mvn clean deploy"
+        
+    }
+    */
+    stage("build docker image"){
+        sh "docker build -t venkataramanth/maven-web-application ."
+        
+    }
+    /*
+    stage("docker push"){
+        sh "docker login -u venkataramanth -p Ramanth@123"
+    }
+    sh "docker push venkataramanth/maven-web-application"
+    */
+    stage('Deploy into Tomcat Server'){
+        sshagent(['464ee557-8a8b-46a1-90d6-d4485dce344c']) {
+    sh "scp -o StrictHostKeyChecking=no target/maven-web-application.war ec2-user@13.232.98.240:/opt/apache-tomcat-9.0.76/webapps/"
+}
+    }
+ 
+    } //try block closing  
+    
+    catch (e) {
+        slackNotifications (currentBuild.result)
+        throw e
+    } //catch block closing
+    finally{
+    slackNotification(currentBuild.result)    
+    } //finally block closing
+    
+} //node closing
+
+//code snipet for sending slack notification
+
+def slackNotification(String buildStatus = 'STARTED') {
+  // build status of null means successful
+  buildStatus =  buildStatus ?: 'SUCCESSFUL'
+
+  // Default values
+  def colorName = 'RED'
+  def colorCode = '#FF0000'
+  def subject = "${buildStatus}: Job '${env.JOB_NAME} [${env.BUILD_NUMBER}]'"
+  def summary = "${subject} (${env.BUILD_URL})"
+
+  // Override default values based on build status
+  if (buildStatus == 'STARTED') {
+    color = 'YELLOW'
+    colorCode = '#FFFF00'
+  } else if (buildStatus == 'SUCCESSFUL') {
+    color = 'GREEN'
+    colorCode = '#00FF00'
+  } else {
+    color = 'RED'
+    colorCode = '#FF0000'
+  }
+  // Send notifications
+  slackSend (color: colorCode, message: summary)
+}
